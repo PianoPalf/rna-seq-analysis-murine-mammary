@@ -33,7 +33,7 @@ Please note that these learning materials were derived from a COMBINE RNA-sequen
 ### 1_alignment_and_counting.Rmd
 
 1. Loads `baseq` and `Rsubread` packages.
-2. Creates R data frame from `FASTQ` file using`baseq` for exploratory data analysis.
+2. Creates R data frame from `FASTQ` file using`baseq` for exploratory data analysis (EDA).
 3. Loads all `FASTQ` files.
 4. Builds Mouse Chromosome 1 Index using `Rsubread`.
 5. Aligns reads to index using `Rsubread`
