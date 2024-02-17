@@ -1,0 +1,136 @@
+---
+title: "Differential_expression_RNA-seq_data"
+author: "Samuel Palframan"
+date: "2024-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# RNA-seq Analysis of Murine Mammary data
+
+## Differential expression with edgeR
+
+Please note that this code was derived from a COMBINE training workshop.
+Original Authors: Maria Doyle, Belinda Phipson, Matt Ritchie, Anna Trigos, Harriet Dashnow, Charity Law.
+Source: `https://bioinformatics-core-shared-training.github.io/RNAseq-R/`
+
+## Load packages and Rdata object
+```{r load_packages}
+# Set working directory
+setwd("~/Jupyter Notebook/Module_X_R/RNA-Seq_Murine_Mammary_COMBINE")
+
+library(edgeR)
+library(limma)
+library(Glimma)
+library(gplots)
+library(org.Mm.eg.db)
+load("Robjects/preprocessing.Rdata")
+```
+
+## Recap of pre-processing
+```{r preprocessing_recap}
+# Read counts from downloaded data
+seqdata <- read.delim("data/3219685/GSE60450_Lactation-GenewiseCounts.txt", stringsAsFactors = FALSE)
+
+# Remove first two columns from seqdata
+countdata <- seqdata[,-(1:2)]
+countdata
+
+# Store EntrezGeneID as rownames
+rownames(countdata) <- seqdata[,1]
+countdata
+
+colnames(countdata) <- substr(colnames(countdata), 1, 7)
+countdata
+
+## Calculate Counts Per Million measure
+myCPM <- cpm(countdata)
+
+## Identify genes with at least 0.5 cpm in at least 2 samples
+thresh <- myCPM > 0.5
+keep <- rowSums(thresh) >= 2
+
+# Subset rows of countdata to keep highly expressed genes
+counts.keep <- countdata[keep,]
+
+## Convert to an edgeR object
+dgeObj <- DGEList(counts.keep)
+
+## Perform TMM normalisation
+dgeObj <- calcNormFactors(dgeObj)
+
+## Obtain corrected sample information
+sampleinfo <- read.delim("data/3219685/SampleInfo_Corrected.txt")
+group <- paste(sampleinfo$CellType,sampleinfo$Status,sep=".")
+group
+```
+
+## Create design matrix
+```{r design_matrix}
+# Create the two variables
+group <- as.character(group)
+type <- sapply(strsplit(group, ".", fixed=T), function(x) x[1])
+status <- sapply(strsplit(group, ".", fixed=T), function(x) x[2])
+# Specify a design matrix with an intercept term
+design <- model.matrix(~ type + status)
+design
+```
+
+## Data exploration
+`MDSplot` shows distances, in terms of Biological Coefficient of Variation (BCV), between samples.
+```{r MDSplot}
+plotMDS(dgeObj, labels=group, cex=0.75, xlim=c(-4, 5))
+```
+
+## Estimating dispersion
+- The common dispersion estimates the overall BCV of the dataset, averaged over all genes:
+```{r common_dispersion}
+# Estimate common dispersion estimates
+dgeObj <- estimateCommonDisp(dgeObj)
+
+# Estimate gene-wise dispersion
+dgeObj <- estimateGLMTrendedDisp(dgeObj)
+dgeObj <- estimateTagwiseDisp(dgeObj)
+
+# Plot estimated dispersions
+plotBCV(dgeObj)
+```
+
+## Testing for differential expression
+First fit genewise Generalised Linear Model (GLM):
+```{r differential_expression}
+# Fit linear model
+fit <- glmFit(dgeObj, design)
+names(fit)
+
+# Check coefficients of linear model from fit object
+head(coef(fit))
+```
+
+Conduct likelihood ratio tests for luminal vs basal and show top genes:
+```{r LRT}
+lrt.BvsL <- glmLRT(fit, coef=2)
+topTags(lrt.BvsL)
+```
+
+## Contrasts
+- To find differentially expressed genes between pregnant and virgin, we lack a parameter that will explicitly allow us to assess this. 
+- We need to build a contrast:
+```{r contrasts}
+# Create contrast matrix (PvsV) - Pregnant and Virgin
+PvsV <- makeContrasts(statuspregnant-statusvirgin, levels=design)
+
+# Likelihood Raio Test (LRT)
+lrt.pVsV <- glmLRT(fit, contrast=PvsV)
+
+# Extract Top Tags (top differentially expressed genes)
+topTags(lrt.pVsV)
+```
+
+## Save Data
+```{r save_data}
+save(lrt.BvsL,dgeObj,group,file="Robjects/DE.Rdata")
+```

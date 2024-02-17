@@ -1,0 +1,140 @@
+---
+title: "Annotation_&_visualisation_RNA-seq_data"
+author: "Samuel Palframan"
+date: "2024-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# RNA-seq Analysis of Murine Mammary data
+
+## Annotation and visualiation of RNA-seq results
+
+Please note that this code was derived from a COMBINE training workshop.
+Original Authors: Maria Doyle, Belinda Phipson, Matt Ritchie, Anna Trigos, Harriet Dashnow, Charity Law.
+Source: `https://bioinformatics-core-shared-training.github.io/RNAseq-R/`
+
+
+## Load data
+```{r load_packages}
+# Set working directory
+setwd("~/Jupyter Notebook/Module_X_R/RNA-Seq_Murine_Mammary_COMBINE")
+
+# Load edgeR
+library(edgeR)
+
+# Load data
+load("Robjects/DE.Rdata")
+```
+
+## Create results Data Frame 
+- From differentially expressed genes (Basal vs Luminal)
+- Will be fleshed out later using `org.Mm.eg.db` package
+```{r results_data_frame}
+# Create Data Frame
+results <- as.data.frame(topTags(lrt.BvsL,n = Inf))
+results
+
+# Check dimensions of Data Frame
+dim(results)
+```
+
+## Create PlotSmear
+- `edgeR` provides a function `plotSmear` that allows visualisation of the differentially expressed (DE) gene analysis.
+- This plot shows the log-fold change against log-counts per million, with DE genes highlighted.
+```{r plotSmear}
+# Summary of Test Decisions
+summary(de <- decideTestsDGE(lrt.BvsL))
+
+# Extract DE gene names
+detags <- rownames(dgeObj)[as.logical(de)]
+
+# Plot SmearPlot for DE genes
+plotSmear(lrt.BvsL, de.tags=detags)
+```
+
+## Annotating edgeR results 
+- Add more information other than just gene names
+- Use `org.Mm.eg.db` package of murine samples
+- Use `org.Hs.eg.db` for human samples
+- Note that these packages are large in size because they are databases that can be used offline.
+```{r eval=FALSE}
+source("http://www.bioconductor.org/biocLite.R")
+
+# For Mouse
+BiocManager::install("org.Mm.eg.db")
+
+# For Human
+BiocManager::install("org.Hs.eg.db")
+
+# Load Mouse package data
+library(org.Mm.eg.db)
+```
+
+- Check what data was imported
+```{r}
+# Check columns of Mouse data
+columns(org.Mm.eg.db)
+
+# Check keytypes of Mouse data
+keytypes(org.Mm.eg.db)
+
+# Select, check and use "ENTREZID" as key
+keys(org.Mm.eg.db, keytype="ENTREZID")[1:10]
+
+# Check whether desired keys are valid
+my.keys <- c("50916", "110308","12293")
+my.keys %in% keys(org.Mm.eg.db, keytype="ENTREZID")
+
+# Above code can also be written as:
+all(my.keys %in% keys(org.Mm.eg.db, keytype="ENTREZID"))
+```
+
+- Annotate results
+```{r}
+# Create annotation variable
+ann <- select(org.Mm.eg.db,keys=rownames(results),columns=c("ENTREZID","SYMBOL","GENENAME"))
+
+# Check "ann"
+head(ann)
+
+# Confirm that "ENTREZID" column matches rownames in results Data Frame
+table(ann$ENTREZID==rownames(results))
+
+# Annotate results Data Frame with "ann" variable
+results.annotated <- cbind(results, ann)
+
+# Check annotated Data Frame
+head(results.annotated)
+
+# Save annotated Data Frame to CSV file
+write.csv(results.annotated,file="B.PregVsLacResults.csv",row.names=FALSE)
+```
+
+- Re-plot PlotSmear with labels for top 200 DE genes
+```{r,echo=FALSE,fig.height=5,fig.width=10}
+# Plot plotSmear
+plotSmear(lrt.BvsL, de.tags=detags)
+
+# Create variable for top number of DE genes
+N <- 200
+
+# Add labels to plot
+text(results.annotated$logCPM[1:N],results.annotated$logFC[1:N],labels = results.annotated$SYMBOL[1:N],col="blue")
+```
+
+- Volcano plot
+Displays measure of significance on y-axis and fold-change on x-axis.
+```{r,fig.height=5,fig.width=10}
+# Transform Significant Values
+signif <- -log10(results.annotated$FDR)
+
+# Create Scatter Plot (log of fold change on x-axis; significance on y-axis = Volcano plot)
+plot(results.annotated$logFC,signif,pch=16)
+
+# Add DE genes in Red
+points(results.annotated[detags,"logFC"],-log10(results.annotated[detags,"FDR"]),pch=16,col="red")
+```

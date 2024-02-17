@@ -1,0 +1,504 @@
+---
+title: "RNA-Seq_Murine_COMBINE"
+author: "Samuel Palframan"
+date: "2024-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# RNA-seq Analysis of Murine Mammary data
+
+## RNA-seq data preprocessing
+
+Please note that this code was derived from a COMBINE training workshop.
+Original Authors: Maria Doyle, Belinda Phipson, Matt Ritchie, Anna Trigos, Harriet Dashnow, Charity Law.
+Source: `https://bioinformatics-core-shared-training.github.io/RNAseq-R/`
+
+## OPTIONAL: Create R DataFrame from Fastq file using `baseq` for EDA
+```{r}
+# Install and/or load `baseq` to read in FASTQ file as R DataFrame.
+#BiocManager::install("baseq")
+library(baseq)
+
+# Set working directory
+setwd("~/Jupyter Notebook/Module_X_R/RNA-Seq_Murine_Mammary_COMBINE")
+
+# Specify file path
+file_path <- "./data/SRR1552444.fastq.gz"
+
+# Read in Fastq file as R DataFrame
+read.fastq_to_df(file_path)
+
+# Create Vector of Header column
+header <- SRR1552444.fastq.gz[,"Header"]
+print(head(header))
+```
+
+## Load Rsubread
+```{r}
+# Install and/or load `Rsubread`.
+#BiocManager::install("Rsubread")
+library(Rsubread)
+```
+
+## Load all FASTQ files from `/.data` folder using `list.files` command
+```{r}
+fastq.files <- list.files(path = "./data", pattern = ".fastq.gz$", full.names = TRUE)
+fastq.files
+```
+
+## Alignment
+### Build the index
+```{r}
+# Note that Mouse Chromosome 1 .fa file (chr1.fa) was dowloaded from: http://hgdownload.soe.ucsc.edu/goldenPath/mm39/chromosomes/
+# The code below was not run in this case because the reference chromosome 1 index was supplied
+#buildindex(basename="chr1_mm10",reference="./data/chr1.fa")
+```
+
+### Align reads to chromosome 1 of reference genome
+```{r}
+# Use `align` command to align reads from the FASTQ files
+align(index="data/chr1_mm10",readfile1=fastq.files)
+
+# To see how many parameters can be changed, use `args` function
+args(align)
+
+# To open Help information for `align`
+?align
+```
+
+### Use `propmapped` function to generate summary of proportion of reads mapped to reference genome
+```{r}
+bam.files <- list.files(path = "./data", pattern = ".BAM$", full.names = TRUE)
+bam.files
+
+# `propmapped` shows that approx. 12 % of genes mapped to Mouse Chromosome 1
+props <- propmapped(files=bam.files)
+props
+```
+
+## Quality Control
+```{r}
+# Extract the quality scores of 100 reads from the file "SRR1552450.fastq.gz"
+qs <- qualityScores(filename="data/SRR1552450.fastq.gz",nreads=100)
+
+# Check class or type of variable created
+class(qs)
+
+# Check how many scores are below 20 (i.e worse than 1 in 100 chance of being wrong)
+# Note that a score above 20 is usually acceptable, but 30 and 40 are much better scores
+poor_score <- sum(qs < 20)
+print(poor_score)
+
+# Check dimensions of qs
+dimensions <- dim(qs)
+print(dimensions)
+
+# Check first few elements of qs ewith head
+head(qs)
+
+# Note that a quality score of 30 corresponds to a 1 in 1000 chance of an incorrect base call. 
+# A quality score of 10 = 1 in 10, 20 = 1 in 100, 30 = 1 in 1000, 40 = 1 in 10,000 etc. chance of an incorrect base call.
+
+# Create Boxplot of qs to visualise Phred quality scores
+boxplot(qs)
+```
+
+## Counting
+```{r}
+# Use `featureCounts` function to count mapped reads to mouse genes
+# Each sample is a separate column, each gene is a row
+fc <- featureCounts(bam.files, annot.inbuilt = "mm10")
+
+# Check names stored in fc
+names(fc)
+
+# Check featureCounts stats
+fc$stat
+
+# Check the gene counts for each sample
+fc$counts
+
+# Check only the first 6 lines of each file
+head(fc$counts)
+
+# Check dimensions to view number of genes (i.e 27,179 genes in 12 files)
+dim(fc$counts)
+
+# Check annotation information from featureCounts
+head(fc$annotation)
+```
+
+### EXTRA: Create DataFrame of gene counts for EDA and potential .csv export
+```{r}
+# Create DataFrame of gene counts
+fc_df <- as.data.frame(fc$counts)
+
+# Check whether there are NAN values
+any(is.na(fc_df))
+
+# Check Structure of fc_df
+str(fc_df)
+
+# Check and create vector of column names of fc_df
+column_names <- as.vector(colnames(fc_df))
+print(column_names)
+
+# Sort fc_df in descending order by desired column/experiment/file
+sorted_df <- fc_df[order(-fc_df[, column_names[1]]), ]
+```
+
+## Pre-processing RNA-seq data
+
+`edgeR` - Bioconductor package for the analysis of differential gene expression. 
+        - Commonly used in RNA-Seq data analysis.
+
+`limma` - Linear Models for Microarray and RNA-Seq Data.
+        - Bioconductor package for RNA-seq Data preprocessing, normalisation, visualisation
+
+`Glimma` - Global Inference of Generalized Linear Models with Marginal Models and Association Metrics.  
+         - Bioconductor package designed for interactive exploration and visualization of RNA-Seq data.
+
+`gplots` - General-purpose plotting package in R. 
+         - Provides functions for creating plots, such as heatmaps, scatterplots, and barplots.
+
+`org.Mm.eg.db` - Bioconductor annotation package specific to the organism Mus musculus (mouse). 
+               - Maps gene IDs and various annotation information, such as gene symbols, pathways, and genomic locations.
+
+`RColorBrewer` - Non-Bioconductor package that provides a collection of color palettes suitable for data visualisation. 
+               - Commonly used to improve the aesthetics of plots by providing visually appealing and distinguishable colors.
+               
+```{r}
+# Install and/or import necessary packages
+
+#BiocManager::install("edgeR")
+library(edgeR)
+#BiocManager::install("limma")
+library(limma)
+#BiocManager::install("Glimma")
+library(Glimma)
+#install.packages("gplots")
+library(gplots)
+#BiocManager::install("org.Mm.eg.db")
+library(org.Mm.eg.db)
+#install.packages("RColorBrewer")
+library(RColorBrewer)
+```
+
+### Data import
+```{r}
+# Read sample data into R
+sampleinfo <- read.delim("data/3219685/SampleInfo.txt")
+View(sampleinfo)
+sampleinfo
+```
+
+### Reading in count data
+```{r}
+# Read count data into R
+seqdata <- read.delim("data/3219685/GSE60450_Lactation-GenewiseCounts.txt", stringsAsFactors = FALSE)
+head(seqdata)
+View(seqdata)
+dim(seqdata)
+```
+
+### Format count data
+```{r}
+# Create countdata DataFrame from seqdata (omit first two columns to take only gene count data)
+countdata <- seqdata[,-(1:2)]
+
+# Make EntrezGeneID (the first column of seqdata) the rownames
+rownames(countdata) <- seqdata[,1]
+
+# Check column names
+# Note that the column names should match the SampleName in sampleinfo DataFrame
+colnames(countdata)
+
+# Make column names the same as SampleName in sampleinfo
+# `substr` - extracts characters starting at specified position stopping at specified position
+# The code below takes the first 6 characters from each column name
+colnames(countdata) <- substr(colnames(countdata), 1, 7)
+View(countdata)
+
+# Check to make sure the column names match SampleName in sampleinfo
+table(colnames(countdata)==sampleinfo$SampleName)
+```
+
+### Filter out lowly expressed genes
+```{r}
+# Genes with low counts across all libraries interfere with statistical approximations and should be filtered out before analysis.
+# Note that there are two biological replicates for each group in this dataset, in which case its best to filter on a minimum counts per million threshold present in at least 2 samples.
+# We use `cpm` function from the `edgeR` library.
+
+# Obtain CPMs
+myCPM <- cpm(countdata)
+
+# Check output
+head(myCPM)
+
+# Which values in myCPM are greater than 0.5?
+thresh <- myCPM > 0.5
+
+# Logical matrix with TRUEs and FALSEs
+head(thresh)
+
+# Count number of TRUEs (cpm > 0.5) in each row
+table(rowSums(thresh)) # note there are 11,433 TRUEs in all 12 samples
+
+# Keep genes that have at least 2 TRUES in each row of thresh
+keep <- rowSums(thresh) >= 2
+head(keep)
+
+# Subset rows of countdata to keep highly expressed genes
+counts.keep <- countdata[keep,]
+summary(keep)
+
+# Check dimensions of counts.keep
+dim(counts.keep)
+
+# Note it is best to filter with CPMs rather than on counts directly, as the latter does not account for differences in library sizes between samples.
+
+# Visualise TRUEs in each row (first sample only)
+plot(myCPM[,1],countdata[,1])
+
+# Set y axis limit to better assess the smaller counts
+plot(myCPM[,1],countdata[,1],ylim=c(0,50),xlim=c(0,3))
+# Add a vertical line at 0.5 CPM
+abline(v=0.5, col="red")
+# Add a horizontal line at count of 10
+abline(h=10, col="blue")
+
+# Note When in doubt, a threshold of 1 CPM in at least minimum group sample size is a good rule of thumb.
+```
+
+## Convert counts to DGEList object
+```{r}
+# DGEList object is an object of edgeR used to store count data
+dgeObj <- DGEList(counts.keep)
+dgeObj
+
+# Library size (total number of sequencing reads or counts) information is stored in dgeObj$samples
+dgeObj$samples
+```
+
+## Quality control
+### Library sizes and distribution plots
+```{r}
+# Check number of reads in each sample
+dgeObj$samples$lib.size
+
+# Plot library sizes as barplot
+# `names` argument tells barplot to use sample names on x-axis
+# `las` argument rotates axis names
+barplot(dgeObj$samples$lib.size, names=colnames(dgeObj), las=2)
+
+# Add plot title
+title("Barplot of library sizes")
+
+# Note Count data is not normally distributed, we therefore need to log the counts to examine raw count distributions
+# Note Best to use boxplots to check distribution on log2 scale.
+
+# Get log2 counts per million
+logcounts <- cpm(dgeObj,log=TRUE)
+
+# Check distributions of samples using boxplots
+boxplot(logcounts, xlab="", ylab="Log2 counts per million",las=2)
+
+# Add blue horizontal line that corresponds to median logCPM
+abline(h=median(logcounts),col="blue")
+
+# Add plot title
+title("Boxplots of logCPMs (unnormalised)")
+
+# From the box plots: the overall density distributions of raw log-intensities are similar
+# If blue horizontal line (median) is far from any given sample, the sample may need to be investigated further
+```
+
+### Multidimensional scaling plots (MDSplots)
+`MDSplots` are one of the most important plots when analysing RNA-seq data.
+`MDSplots` are visualisations of the principle components analysis (PCA), which determines the greatest sources of variation in the data.
+`PCA` is an example of an unsupervised analysis, and will group/cluster similar data together.
+- If experiment is well controlled, we expect to see greatest sources of variations between the different treatment/groups.
+- MDSplots are good quality control tools and also check for outliers.
+```{r}
+# Create MDSplot
+plotMDS(dgeObj)
+
+# Plot two plots side-by-side
+par(mfrow=c(1,2))
+
+# ===== CELL TYPE ===== 
+
+# Set colour schemes for CellType (see sampleinfo)
+sampleinfo$CellType
+levels(sampleinfo$CellType)
+
+# Check class of CellType (note that it must be `factor`, not `character`)
+class(sampleinfo$CellType)
+
+# Convert to `factor` using factor function
+sampleinfo$CellType <- factor(sampleinfo$CellType)
+
+## Set purple for basal and orange for luminal
+col.cell <- c("purple","orange")[sampleinfo$CellType]
+data.frame(sampleinfo$CellType,col.cell)
+
+# Redo MDS with cell type colouring
+plotMDS(dgeObj,col=col.cell)
+# Add legend to plot to designate colours to cell type
+legend("topleft",fill=c("purple","orange"),legend=levels(sampleinfo$CellType))
+# Add title
+title("Cell type")
+
+# ======= STATUS ======= 
+
+# Similarly for Status
+levels(sampleinfo$Status)
+
+# # Check class of Status (note that it must be `factor`, not `character`)
+class(sampleinfo$Status)
+
+# Convert to Status to `factor` using factor function
+sampleinfo$Status <- factor(sampleinfo$Status) 
+
+# Set blue for lactate, red for pregnant and darkgreen for virgin
+col.status <- c("blue","red","darkgreen")[sampleinfo$Status]
+data.frame(sampleinfo$Status,col.status)
+
+# Plot MDS with status type colouring
+plotMDS(dgeObj,col=col.status)
+# Add legend to plot to designate colours to status
+legend("topleft",fill=c("blue","red","dark green"),legend=levels(sampleinfo$Status),cex=0.8)
+# Add title
+title("Status")
+
+# ======= CORRECTION =======
+# From the plot, it is clear that sample MCL1.DG is in fact a basal cell, and MCL1.LA is a luminal cell
+
+# Current (incorrect) sampleinfo
+sampleinfo
+
+# Corrected sampleinfo (MCL1.DG = basal, MCL1.LA = luminal)
+sampleinfo <- read.delim("data/3219685/SampleInfo_Corrected.txt")
+sampleinfo
+
+# MDSplot with corrected information
+par(mfrow=c(1,2))
+
+# Convert to `factor` using factor function
+sampleinfo$CellType <- factor(sampleinfo$CellType)
+## CellType: Set purple for basal and orange for luminal
+col.cell <- c("purple","orange")[sampleinfo$CellType]
+
+# Convert to Status to `factor` using factor function
+sampleinfo$Status <- factor(sampleinfo$Status) 
+# Status: Set blue for lactate, red for pregnant and darkgreen for virgin
+col.status <- c("blue","red","darkgreen")[sampleinfo$Status]
+
+
+# Plot CellType
+plotMDS(dgeObj,col=col.cell)
+legend("topleft",fill=c("purple","orange"),legend=levels(sampleinfo$CellType))
+title("Cell type")
+
+# Plot Status
+plotMDS(dgeObj,col=col.status)
+legend("topleft",fill=c("blue","red","darkgreen"),legend=levels(sampleinfo$Status),cex=0.8)
+title("Status")
+
+# Plots Dimension 3 (appears to separate pregnant samples from the rest)
+plotMDS(dgeObj,dim=c(3,4), col=col.status)
+legend("topleft",fill=c("blue","red","darkgreen"),legend=levels(sampleinfo$Status),cex=0.8)
+title("Status")
+
+# ======= MDSplots using Glimma (interactive plots) =======
+
+# Create Label for interactive plot table containing SampleName, CellType and Status
+labels <- paste(sampleinfo$SampleName, sampleinfo$CellType, sampleinfo$Status)
+# Create Groups based on CellType and Status
+group <- paste(sampleinfo$CellType,sampleinfo$Status,sep=".")
+# Convert `group` object to factor (so that it can be plotted and coloured)
+group <- factor(group)
+# Create interactive Glimma HTML plots
+glMDSPlot(dgeObj, labels=labels, groups=group, folder="mds")
+```
+
+### Hierarchical clustering with heatmaps
+`Hierarchical clustering` heatmaps are an alternative to MDSplots.
+- Use `heatmap.2` function from gplots package.
+- `RColorBrewer1` provides more aesthetically-pleasing colour schemes using `brewer.pal` function ("RdYlBu" and "Spectral are good options)
+- Note that `png` function creates a .png file of the plots.
+- Note omit `dev.off()` code to view the plots interactively.
+```{r}
+# Estimate variance for each row in the logcounts matrix
+var_genes <- apply(logcounts, 1, var)
+head(var_genes)
+
+# Get gene names for top 100 most variable genes (can visualise more genes but text becomes unreadable)
+select_var <- names(sort(var_genes, decreasing=TRUE))[1:100]
+head(select_var)
+
+# Subset logcounts matrix
+highly_variable_lcpm <- logcounts[select_var,]
+dim(highly_variable_lcpm)
+head(highly_variable_lcpm)
+
+## Choose nicer colour palette
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+# Set up colour vector for celltype variable
+col.cell <- c("purple","orange")[sampleinfo$CellType]
+
+# Plot heatmap
+heatmap.2(highly_variable_lcpm, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 100 most variable genes across samples",
+          ColSideColors=col.cell,scale="row")
+
+# Save the heatmap
+png(file="High_var_genes.heatmap.png")
+heatmap.2(highly_variable_lcpm,col=rev(morecols(50)),trace="none", main="Top 500 most variable genes\nacross samples",ColSideColors=col.cell,scale="row")
+#dev.off()
+```
+
+## Normalisation for composition bias
+- `Trimmed mean of M-values normalisation method (TMM)` is performed to eliminate composition bisases between libraries.
+- The `calcNormFactors` function in `edgeR` calculates the normalisation factors between libraries.
+```{r}
+# Apply normalisation to DGEList object
+dgeObj <- calcNormFactors(dgeObj)
+
+# Check normalisation factors for these samples
+dgeObj$samples
+
+# Note that a Normalisation Factor smaller than 1.0 indicates that the library size will be scaled down.
+# A Normalisation Factor greater than 1.0 is scaled up.
+# Note that MCL1.LA and MCL1.LB have the greatest, and MCL1.LE and MCL1.LF have the smallest.
+
+# Plot Mean Difference scatter plot (MCL1.LA)
+par(mfrow=c(1,2)) # Set number of plots (i.e 1 row and 2 columns = 2 plots)
+plotMD(logcounts,column = 7)
+abline(h=0,col="grey")
+
+# Plot Mean Difference scatter plot (MCL1.LE)
+plotMD(logcounts,column = 11)
+abline(h=0,col="grey")
+
+# Plot Mean Difference using dgeObj (i.e after normalisation) (MCL1.LA)
+par(mfrow=c(1,2))
+plotMD(dgeObj,column = 7)
+abline(h=0,col="grey")
+
+# Plot Mean Difference using dgeObj (i.e after normalisation) (MCL1.LE)
+plotMD(dgeObj,column = 11)
+abline(h=0,col="grey")
+```
+
+## Save data objects for further analysis
+```{r}
+save(group,dgeObj,sampleinfo,file="Robjects/preprocessing.Rdata")
+```

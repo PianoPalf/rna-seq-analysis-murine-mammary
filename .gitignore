@@ -1,0 +1,7 @@
+**/.DS_Store
+__pycache__/
+data/chr1_mm10.00.b.tab
+data/chr1.fa
+data/chr1_mm10.00.b.array
+subread-index-sam-032470-PKW7uo
+data
