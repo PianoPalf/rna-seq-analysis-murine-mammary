@@ -82,6 +82,9 @@ Please note that these learning materials were derived from a COMBINE RNA-sequen
 3. Creates Volcano plot that displays measure of signficance (`y-axis`) and fold-change (`x-axis`):
    ![phred](plots/volcano.png)
 
+### 5_gene-set_testing.Rmd
+
+1. pending
 
 ## Technologies
 
