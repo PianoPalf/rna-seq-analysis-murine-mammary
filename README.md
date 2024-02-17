@@ -7,7 +7,7 @@ These data and code were derived from [Lun, Chen & Smyth 2016](https://pubmed.nc
 Original authors: Maria Doyle, Belinda Phipson, Matt Ritchie, Anna Trigos, Harriet Dashnow, Charity Law.
 
 
-![rna-seq](/Users/samuelpalframan/Jupyter Notebook/Module_X_R/GitHub/rna-seq-analysis-murine-mammary/images/banner.png)
+![rna-seq](images/banner.png)
 
 ## Preface
 
