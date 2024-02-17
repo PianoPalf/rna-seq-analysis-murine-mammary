@@ -65,10 +65,10 @@ plotSmear(lrt.BvsL, de.tags=detags)
 source("http://www.bioconductor.org/biocLite.R")
 
 # For Mouse
-BiocManager::install("org.Mm.eg.db")
+#BiocManager::install("org.Mm.eg.db")
 
 # For Human
-BiocManager::install("org.Hs.eg.db")
+#BiocManager::install("org.Hs.eg.db")
 
 # Load Mouse package data
 library(org.Mm.eg.db)

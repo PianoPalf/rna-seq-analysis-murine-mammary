@@ -30,18 +30,57 @@ Please note that these learning materials were derived from a COMBINE RNA-sequen
 
 ## General info
 
-### 1_preprocessing_and_quality_control.Rmd
+### 1_alignment_and_counting.Rmd
 
-- pending
+1. Loads `baseq` and `Rsubread` packages.
+2. Creates R data frame from `FASTQ` file using`baseq` for exploratory data analysis.
+3. Loads all `FASTQ` files.
+4. Builds Mouse Chromosome 1 Index using `Rsubread`.
+5. Aligns reads to index using `Rsubread`
+6. Uses `propmapped` function of `Rsubread` to generate summary/proportion of reads mapped to reference genome.
+7. Performs some Quality Control by checking Phred scores  using `qualityScores` function. Creates boxplot of scores:![phred](plots/qc_phred_boxplot.png)
+8. Counts reads mapped to genes using `featureCounts` function.
+9. Creates R data frames of gene counts for exploratory data analysis.
+
+### 2_preprocessing_and_quality_control.Rmd
+
+1. Loads `edgeR`, `limma`, `Glimma`, `gplots`, `org.Mm.eg.db` and `RColorBrewer`.
+2. Imports `sampleinfo` and reads in `countdata` (prepared previously).
+3. Formats `countdata` to ensure columns match SampleName column in `sampleinfo`.
+4. Filter out lowly expressed genes using counts per million (`cpm` function). 
+5. Converts counts to `DGEList` object (`edgeR` object used to store count data).
+6. Checks number of reads in each sample and plots data as boxplot:
+   ![phred](plots/boxplot_logCPMs.png)
+7. Plots MDSplot to visualise principle component analysis (PCA; determines greatest sources of variation in data by clustering similar data):
+   ![phred](plots/mdsplot.png)
+8. Performs Hierarchical Clustering using `heatmap.2` function from `gplots` to visualise top 100 most differentially expressed (DE) genes:
+   ![phred](plots/heatmap.png)
+9. Normalises composition biases between libraries using trimmed mean of M-values normalisation method (TMM):
+   ![phred](plots/tmm.png)
+10. Data objects saved for further analysis.
 
 
-### 2_differential_expression_using_edgeR.Rmd
+### 3_differential_expression_using_edgeR.Rmd
 
-- pending 
+1. Creates design matrix (displays how conditions or groups are modelled in the statistical analysis).
 
-### 3_annotation_and_visualisation.Rmd
+2. Replots MDSplot with `CellType` and `Status` info and plots Estimated Dispersion:
+   ![phred](plots/mds_labelled.png)
 
-- pending
+3. Tests for DE using genewise Generalised Linear Model (GLM).
+4. Conducts likelihood ratio tests for luminal vs basal cell types.
+5. Creates Contrast Matrix in order to find DE genes between pregnant and virgin status mice.
+6. Saves data object for visualisation.
+
+### 4_annotation_and_visualisation.Rmd
+
+1. Creates Results data frame containing all `ENTREZID`, which allows annotation using `org.Mm.eg.db` library.
+
+2. Creates PlotSmear that visualises DE genes and the average logCPM:
+   ![phred](plots/plotsmear.png)
+
+3. Creates Volcano plot that displays measure of signficance (`y-axis`) and fold-change (`x-axis`):
+   ![phred](plots/volcano.png)
 
 
 ## Technologies
